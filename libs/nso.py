@@ -45,6 +45,20 @@ class NsoLibs:
         print(r.status_code)
         print(r.text)
 
+    def get_device_dict(self, device_name):
+        error = None
+        headers = {"Accept": "application/vnd.yang.data+json"}
+        r = requests.get(
+            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}',
+            auth=HTTPBasicAuth(self.un, self.pw),
+            headers=headers
+        )
+        if r.status_code != 200:
+            error = {"message": "failed to get device data"}
+            return {}, error
+        else:
+            return json.loads(r.text), error
+
     def check_api(self):
         headers = {"Accept": "application/vnd.yang.api+json"}
         r = requests.get(
@@ -100,23 +114,100 @@ class NsoLibs:
                     return False, error
         return True, error
 
-    def post_cisco_interface_config(self, device_name):
+    def post_device_config(self, device_name, xml_file, config_path):
         print(os.getcwd())
-        path = 'C:/Users/steph/Documents/behave/xml/interface_config.xml'
+        error = None
+        path = f'C:/Users/steph/Documents/behave/xml/{xml_file}'
         with open(path) as file:
             xml_data = xmltodict.parse(file.read())
 
         payload = xmltodict.unparse(xml_data)
         headers = {"Accept": "application/vnd.yang.datastore+xml"}
         r = requests.patch(
-            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}/config/ios:native/interface/',
+            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}/config/{config_path}',
             auth=HTTPBasicAuth(self.un, self.pw),
             headers=headers,
             data=payload
         )
-        print(r.status_code)
-        print(r.text)
 
+        if r.status_code != 204:
+            error = {'message': 'failed to post configuration'}
+            return False, error
+        else:
+            return True, error
+
+    def remove_device_trace(self, device_name, xml_file):
+        error = None
+        path = f'C:/Users/steph/Documents/behave/xml/{xml_file}'
+        with open(path) as file:
+            xml_data = xmltodict.parse(file.read())
+
+        payload = xmltodict.unparse(xml_data)
+        headers = {"Accept": "application/vnd.yang.data+json"}
+        r = requests.patch(
+            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}/trace',
+            auth=HTTPBasicAuth(self.un, self.pw),
+            headers=headers,
+            data=payload
+        )
+        if r.status_code != 204:
+            error = {"message": f"failed to remove device trace: {device_name}"}
+            return False, error
+        else:
+            return True, error
+
+    def install_device_trace(self, device_name, xml_file):
+        error = None
+        path = f'C:/Users/steph/Documents/behave/xml/{xml_file}'
+        with open(path) as file:
+            xml_data = xmltodict.parse(file.read())
+
+        payload = xmltodict.unparse(xml_data)
+        headers = {"Accept": "application/vnd.yang.data+json"}
+        r = requests.put(
+            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}/trace',
+            auth=HTTPBasicAuth(self.un, self.pw),
+            headers=headers,
+            data=payload
+        )
+        if r.status_code != 204:
+            error = {"message": f"failed to install device trace: {device_name}"}
+            return False, error
+        else:
+            return True, error
+
+    def sync_from_device(self, device_name):
+        error = None
+        headers = {"Accept": "application/vnd.yang.data+json"}
+        r = requests.post(
+            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}/_operations/sync-from',
+            auth=HTTPBasicAuth(self.un, self.pw),
+            headers=headers
+        )
+        if r.status_code != 200:
+            error = {"message": f"failed to sync from device: {device_name}"}
+            return False, error
+        else:
+            response = json.loads(r.text)
+            if str(response['tailf-ncs:output']['result']).lower() != 'true':
+                error = {"message": f"failed to sync from device: {device_name}"}
+                return False, error
+            else:
+                return True, error
+
+    def get_device_config_dict(self, device_name, path):
+        error = None
+        headers = {"Accept": "application/vnd.yang.data+json"}
+        r = requests.get(
+            url=f'http://{self.hostname}:8080/api/running/devices/device/{device_name}{path}',
+            auth=HTTPBasicAuth(self.un, self.pw),
+            headers=headers
+        )
+        if r.status_code != 200:
+            error = {"message": "failed to get device data"}
+            return {}, error
+        else:
+            return json.loads(r.text), error
 
 if __name__ == '__main__':
     nso = NsoLibs(hostname='192.168.20.60', un='root', pw='dvrlab')
@@ -130,7 +221,9 @@ if __name__ == '__main__':
     pkg_list, error = nso.get_packages()
     print(f'pkg _list: {pkg_list}')
     print(f'error: {error}')
+    
+    result, error = nso.post_cisco_interface_config(device_name='csr1000v', xml_file='interface_config.xml')
     """
-    nso.post_cisco_interface_config(device_name='csr1000v')
-
-
+    # nso.install_device_trace(device_name='csr1000v', xml_file='set_trace.xml')
+    device_data, error = nso.post_device_config(device_name='csr1000v', config_path='ios:native/interface/', xml_file='mtu_config.xml')
+    print(device_data)
